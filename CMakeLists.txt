@@ -12,20 +12,20 @@ add_library(tinyrender SHARED ${lib_SOURCES})
 target_compile_definitions(tinyrender PRIVATE WIN_EXPORT)
 
 file(GLOB_RECURSE test_SOURCES "test/*.cpp")
-add_executable(line-test ${test_SOURCES})
-target_include_directories(line-test PRIVATE "${PROJECT_SOURCE_DIR}/test")
-target_link_libraries(line-test tinyrender)
+add_executable(tinyrender-test ${test_SOURCES})
+target_include_directories(tinyrender-test PRIVATE "${PROJECT_SOURCE_DIR}/test")
+target_link_libraries(tinyrender-test tinyrender)
 
-add_custom_target(link_file ALL DEPENDS line-test)
+add_custom_target(link_file ALL DEPENDS tinyrender-test)
 add_custom_command (TARGET link_file
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E create_symlink 
-    "${PROJECT_SOURCE_DIR}/test/obj" "$<TARGET_FILE_DIR:line-test>/obj"
+    "${PROJECT_SOURCE_DIR}/test/obj" "$<TARGET_FILE_DIR:tinyrender-test>/obj"
 )
 
 enable_testing()
 
 add_test(
     NAME catch_test
-    COMMAND $<TARGET_FILE:line-test> --success
+    COMMAND $<TARGET_FILE:tinyrender-test> --success
 )
