@@ -115,13 +115,29 @@ Vec3f barycentric(Vec2i *pts, Vec2i P)
 {
     // 下面两个计算的结果是一样的
     // Vec3f u = Vec3f(pts[2].x - pts[0].x, pts[1].x - pts[0].x, pts[0].x - P.x) ^ Vec3f(pts[2].y - pts[0].y, pts[1].y - pts[0].y, pts[0].y - P.y);
-    Vec3f u = Vec3f(pts[1].x - pts[0].x, pts[2].x - pts[0].x, pts[0].x - P.x) ^ Vec3f(pts[1].y - pts[0].y, pts[2].y - pts[0].y, pts[0].y - P.y);
+    Vec3f u = cross(Vec3f(pts[1].x - pts[0].x, pts[2].x - pts[0].x, pts[0].x - P.x), Vec3f(pts[1].y - pts[0].y, pts[2].y - pts[0].y, pts[0].y - P.y));
     /* `pts` and `P` has integer value as coordinates
        so `abs(u[2])` < 1 means `u[2]` is 0, that means
        triangle is degenerate, in this case return something with negative coordinates */
     if (std::abs(u.z) < 1)
         return Vec3f(-1, 1, 1);
     return Vec3f(1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z);
+}
+
+Vec3f barycentric(Vec3f *pts, const Vec3f &P)
+{
+    // 下面两个计算的结果是一样的
+    // Vec3f u = Vec3f(pts[2].x - pts[0].x, pts[1].x - pts[0].x, pts[0].x - P.x) ^ Vec3f(pts[2].y - pts[0].y, pts[1].y - pts[0].y, pts[0].y - P.y);
+    Vec3f u = cross(Vec3f(pts[1][1] - pts[0][1], pts[2][1] - pts[0][1], pts[0][1] - P[1]), Vec3f(pts[1][0] - pts[0][0], pts[2][0] - pts[0][0], pts[0][0] - P[0]));
+    /* `pts` and `P` has integer value as coordinates
+    so `abs(u[2])` < 1 means `u[2]` is 0, that means
+    triangle is degenerate, in this case return something with negative coordinates */
+    // if (std::abs(u.z) < 1)
+    //     return Vec3f(-1, 1, 1);
+    // return Vec3f(1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z);
+    if (std::abs(u[2]) > 1e-2) // dont forget that u[2] is integer. If it is zero then triangle ABC is degenerate
+        return Vec3f(1.f - (u.x + u.y) / u.z, u.y / u.z, u.x / u.z);
+    return Vec3f(-1, 1, 1); // in this case generate negative coordinates, it will be thrown away by the rasterizator
 }
 
 void triangle_barycentric(Vec2i *pts, TGAImage &image, TGAColor color)
@@ -154,7 +170,7 @@ TEST_CASE("fill triangle with barycentric", "[face]")
 {
     TGAImage image(width, height, TGAImage::RGB);
 
-    Vec2i pts[3] = {Vec2i(10,10), Vec2i(100, 30), Vec2i(190, 160)}; 
+    Vec2i pts[3] = {Vec2i(10, 10), Vec2i(100, 30), Vec2i(190, 160)};
     triangle_barycentric(pts, image, red);
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
     image.write_tga_file("triangles_barycentric.tga");
@@ -171,13 +187,13 @@ TEST_CASE("Flat shading", "[face]")
         std::vector<int> face = model->face(i);
         Vec2i screen_coords[3];
 
-        for (int j=0; j<3; ++j)
+        for (int j = 0; j < 3; ++j)
         {
             Vec3f world_coords = model->vert(face[j]);
-            screen_coords[j]  = Vec2i((world_coords.x + 1)*width/2, (world_coords.y + 1)*height/2);
+            screen_coords[j] = Vec2i((world_coords.x + 1) * width / 2, (world_coords.y + 1) * height / 2);
         }
 
-        triangle_barycentric(screen_coords, image, TGAColor(rand()%255, rand()%255, rand()%255, 255));
+        triangle_barycentric(screen_coords, image, TGAColor(rand() % 255, rand() % 255, rand() % 255, 255));
     }
 
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
@@ -186,7 +202,7 @@ TEST_CASE("Flat shading", "[face]")
 
 TEST_CASE("flat shading - gray", "[face]")
 {
-    Vec3f light_dir(0,0,-1);
+    Vec3f light_dir(0, 0, -1);
 
     auto model = std::make_unique<Model>("obj/african_head.obj");
     int width = 800;
@@ -198,22 +214,99 @@ TEST_CASE("flat shading - gray", "[face]")
         Vec2i screen_coords[3];
         Vec3f world_coords[3];
 
-        for (int j=0; j<3; ++j)
+        for (int j = 0; j < 3; ++j)
         {
             Vec3f v = model->vert(face[j]);
-            screen_coords[j]  = Vec2i((v.x + 1)*width/2, (v.y + 1)*height/2);
+            screen_coords[j] = Vec2i((v.x + 1) * width / 2, (v.y + 1) * height / 2);
             world_coords[j] = std::move(v);
         }
 
-        Vec3f n = (world_coords[2] - world_coords[0])^(world_coords[1] - world_coords[0]);
+        Vec3f n = cross(world_coords[2] - world_coords[0], world_coords[1] - world_coords[0]);
         n.normalize();
         float intensity = n * light_dir;
         if (intensity > 0)
         {
-            triangle_barycentric(screen_coords, image, TGAColor(intensity*255, intensity*255, intensity*255, 255));
+            triangle_barycentric(screen_coords, image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
         }
     }
 
     image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
     image.write_tga_file("flat_shading_gray.tga");
+}
+
+void triangle_zbuffer(Vec3f *pts, float *zbuffer, TGAImage &image, TGAColor color)
+{
+    Vec2f bboxmin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+    Vec2f bboxmax(std::numeric_limits<float>::min(), std::numeric_limits<float>::min());
+    Vec2f clamp(image.get_width() - 1, image.get_height() - 1);
+    for (int i = 0; i < 3; i++)
+    {
+        for (int j = 0; j < 2; j++)
+        {
+            bboxmin[j] = std::max(0.f, std::min(bboxmin[j], pts[i][j]));
+            bboxmax[j] = std::min(clamp[j], std::max(bboxmax[j], pts[i][j]));
+        }
+    }
+    Vec3f P;
+    for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++)
+    {
+        for (P.y = bboxmin.y; P.y <= bboxmax.y; P.y++)
+        {
+            Vec3f bc_screen = barycentric(pts, P);
+            if (bc_screen.x < 0 || bc_screen.y < 0 || bc_screen.z < 0)
+                continue;
+            P.z = 0;
+            for (int i = 0; i < 3; i++)
+                P.z += pts[i][2] * bc_screen[i];
+            if (zbuffer[int(P.x + P.y * width)] < P.z)
+            { // 说明这个点在已绘制的点之上
+                zbuffer[int(P.x + P.y * width)] = P.z;
+                image.set(P.x, P.y, color);
+            }
+        }
+    }
+}
+
+TEST_CASE("flat shading - zbuff", "[face]")
+{
+    Vec3f light_dir(0, 0, -1);
+
+    auto model = std::make_unique<Model>("obj/african_head.obj");
+    int width = 800;
+    int height = 800;
+
+    float *zbuffer = new float[width * height];
+    for (int i = width * height; i--; zbuffer[i] = -std::numeric_limits<float>::max())
+        ;
+
+    auto world2screen = [&](const Vec3f &v) -> Vec3f
+    {
+        return Vec3f(int((v.x + 1.) * width / 2. + .5), int((v.y + 1.) * height / 2. + .5), v.z);
+    };
+
+    TGAImage image(width, height, TGAImage::RGB);
+    for (int i = 0; i < model->nfaces(); i++)
+    {
+        std::vector<int> face = model->face(i);
+        Vec3f world_coords[3];
+        Vec3f pts[3];
+
+        for (int j = 0; j < 3; ++j)
+        {
+            Vec3f v = model->vert(face[j]);
+            pts[j] = world2screen(v);
+            world_coords[j] = std::move(v);
+        }
+
+        Vec3f n = cross(world_coords[2] - world_coords[0], world_coords[1] - world_coords[0]);
+        n.normalize();
+        float intensity = n * light_dir;
+        if (intensity > 0)
+        {
+            triangle_zbuffer(pts, zbuffer, image, TGAColor(intensity * 255, intensity * 255, intensity * 255, 255));
+        }
+    }
+
+    image.flip_vertically(); // i want to have the origin at the left bottom corner of the image
+    image.write_tga_file("flat_shading_zbuff.tga");
 }
